@@ -201,6 +201,12 @@ wanted_level=0
 MAX_WANTED_LEVEL=5
 declare -a owned_vehicles=()
 declare -A vehicle_types=( ["Sedan"]=2000 ["Motorcycle"]=1500 ["Truck"]=2500 ["Sports Car"]=5000 )
+# Per-vehicle-type stats: drive time (hours, lower = faster) and daily maintenance ($).
+# owned_vehicles stays the persisted player state; these are static lookup tables.
+declare -A vehicle_speed=( ["Sedan"]=3 ["Motorcycle"]=3 ["Truck"]=5 ["Sports Car"]=2 )
+declare -A vehicle_maintenance=( ["Sedan"]=35 ["Motorcycle"]=20 ["Truck"]=30 ["Sports Car"]=75 )
+VEHICLE_DEFAULT_SPEED=4   # fallback drive time for unknown/plugin vehicle types
+VEHICLE_DEFAULT_UPKEEP=40 # fallback daily maintenance for unknown/plugin vehicle types
 declare -A market_conditions=()
 declare -a world_event_log=()
 
@@ -2114,6 +2120,16 @@ calculate_and_apply_payouts() {
 		echo "Safe house rent: -\$$SAFEHOUSE_RENT_COST"
 	fi
 
+	# Vehicle maintenance
+	local vehicle_upkeep=0 vm
+	for vm in "${owned_vehicles[@]}"; do
+		vehicle_upkeep=$(( vehicle_upkeep + ${vehicle_maintenance[$vm]:-$VEHICLE_DEFAULT_UPKEEP} ))
+	done
+	if (( vehicle_upkeep > 0 )); then
+		upkeep_cost=$(( upkeep_cost + vehicle_upkeep ))
+		echo "Vehicle Maintenance: -\$$vehicle_upkeep"
+	fi
+
 	# Collect protection income
 	collect_protection_income
 
@@ -2209,7 +2225,16 @@ travel_to() {
 		read -r -p "Use your own vehicle for free travel? (y/n): " use_vehicle_choice
 		if [[ "$use_vehicle_choice" == "y" || "$use_vehicle_choice" == "Y" ]]; then
 			use_own_vehicle=true; travel_cost=0
-			echo "You hop into one of your vehicles."; play_sfx_mpg "car_start"
+			# Pick the fastest owned vehicle (lowest drive time) for the trip
+			local best_vehicle="${owned_vehicles[0]}"
+			local best_time=${vehicle_speed[$best_vehicle]:-$VEHICLE_DEFAULT_SPEED}
+			local v v_time
+			for v in "${owned_vehicles[@]}"; do
+				v_time=${vehicle_speed[$v]:-$VEHICLE_DEFAULT_SPEED}
+				if (( v_time < best_time )); then best_time=$v_time; best_vehicle="$v"; fi
+			done
+			travel_time=$best_time
+			echo "You hop into your $best_vehicle (${best_time}h trip)."; play_sfx_mpg "car_start"
 		fi
 	fi
 
@@ -2331,7 +2356,9 @@ buy_vehicle() {
 		buyable_vehicles=(); i=1
 		for type in "${!vehicle_types[@]}"; do
 			local price=${vehicle_types[$type]}
-			printf " %d. %-12s (\$ %d)\n" "$i" "$type" "$price"
+			local up=${vehicle_maintenance[$type]:-$VEHICLE_DEFAULT_UPKEEP}
+			local dt=${vehicle_speed[$type]:-$VEHICLE_DEFAULT_SPEED}
+			printf " %d. %-12s (\$%d)  upkeep \$%d/day, %dh trips\n" "$i" "$type" "$price" "$up" "$dt"
 			buyable_vehicles+=("$type"); ((i++))
 		done
 		printf " %d. Leave\n" "$i"; printf "Your Cash: \$%d\n" "$cash"
@@ -2383,7 +2410,18 @@ show_inventory() {
 		if ! $drug_found; then echo "  (None)"; fi
 		echo "--------------------------"
 		echo " Vehicles:"
-		if (( ${#owned_vehicles[@]} > 0 )); then printf "  - %s\n" "${owned_vehicles[@]}"; else echo "  (None)"; fi
+		if (( ${#owned_vehicles[@]} > 0 )); then
+			local total_upkeep=0 fastest_v="" fastest_t=999 vt vu dt
+			for vt in "${owned_vehicles[@]}"; do
+				vu=${vehicle_maintenance[$vt]:-$VEHICLE_DEFAULT_UPKEEP}
+				dt=${vehicle_speed[$vt]:-$VEHICLE_DEFAULT_SPEED}
+				printf "  - %-12s (upkeep \$%d/day, %dh trips)\n" "$vt" "$vu" "$dt"
+				total_upkeep=$(( total_upkeep + vu ))
+				if (( dt < fastest_t )); then fastest_t=$dt; fastest_v="$vt"; fi
+			done
+			printf "  Total maintenance: \$%d/day\n" "$total_upkeep"
+			printf "  Fastest ride: %s (%dh trips)\n" "$fastest_v" "$fastest_t"
+		else echo "  (None)"; fi
 		echo "--------------------------"
 		echo " Skills:"
 		for skill in "${!default_skills[@]}"; do
