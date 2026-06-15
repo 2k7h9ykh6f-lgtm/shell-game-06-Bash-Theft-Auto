@@ -744,12 +744,85 @@ play_sfx_mpg() {
 }
 
 # --- Plugin Loading ---
-plugin_dir="plugins"
-if [[ -d "$BASEDIR/$plugin_dir" ]]; then
+plugin_dir="plugins"                                   # kept; docs reference this name
+PLUGIN_DISABLE_FILE="$BASEDIR/$plugin_dir/disabled.list"
+
+# Populated by load_plugins; global so future menus/debug can read them.
+PLUGINS_LOADED=()
+PLUGINS_DISABLED=()
+PLUGINS_FAILED=()
+
+# _plugin_is_disabled <basename>  -> 0 if disabled via env var or disabled.list.
+# Names match with or without the trailing ".sh".
+_plugin_is_disabled() {
+	local base="$1" stem="${1%.sh}" token line
+	local list="${BTA_DISABLE_PLUGINS:-}"; list="${list//,/ }"
+	for token in $list; do
+		[[ "$token" == "$base" || "$token" == "$stem" ]] && return 0
+	done
+	if [[ -f "$PLUGIN_DISABLE_FILE" ]]; then
+		while IFS= read -r line || [[ -n "$line" ]]; do
+			line="${line%%#*}"; line="${line//[[:space:]]/}"
+			[[ -z "$line" ]] && continue
+			[[ "$line" == "$base" || "${line%.sh}" == "$stem" ]] && return 0
+		done < "$PLUGIN_DISABLE_FILE"
+	fi
+	return 1
+}
+
+# Source every plugins/*.sh, skipping disabled ones and isolating failures so a
+# bad plugin can report a clear error without aborting the game.
+load_plugins() {
+	local plugin_path="$BASEDIR/$plugin_dir"
+	if [[ ! -d "$plugin_path" ]]; then
+		echo -e "\e[1;33mNote:\e[0m plugin directory '$plugin_dir' not found; skipping plugins."
+		return 0
+	fi
+
+	local plugin_script base syntax_err
 	while IFS= read -r -d $'\0' plugin_script; do
-		[[ -f "$plugin_script" ]] && source "$plugin_script"
-	done < <(find "$BASEDIR/$plugin_dir" -maxdepth 1 -name "*.sh" -print0 2>/dev/null)
-fi
+		[[ -f "$plugin_script" ]] || continue
+		base="$(basename "$plugin_script")"
+
+		# Honor the disable list / env var.
+		if _plugin_is_disabled "$base"; then
+			PLUGINS_DISABLED+=("$base"); dbg "Plugin disabled: $base"; continue
+		fi
+
+		# Syntax-check before sourcing so a broken plugin can't half-load or
+		# abort startup. Catches parse errors (the common failure mode).
+		if ! syntax_err="$(bash -n "$plugin_script" 2>&1)"; then
+			PLUGINS_FAILED+=("$base")
+			echo -e "\e[1;31mPlugin failed (syntax):\e[0m $base"
+			echo -e "  ${syntax_err%%$'\n'*}"
+			dbg "Plugin syntax error: $base :: $syntax_err"; continue
+		fi
+
+		# Source it; a non-zero return at load time is reported, not fatal.
+		if source "$plugin_script"; then
+			PLUGINS_LOADED+=("$base"); dbg "Plugin loaded: $base"
+		else
+			PLUGINS_FAILED+=("$base")
+			echo -e "\e[1;31mPlugin failed (load error):\e[0m $base"
+			dbg "Plugin returned non-zero on source: $base"
+		fi
+	done < <(find "$plugin_path" -maxdepth 1 -name "*.sh" -print0 2>/dev/null | sort -z)
+
+	# --- Startup summary ---
+	echo "--- Plugins (${#PLUGINS_LOADED[@]} loaded) ---"
+	local p
+	for p in "${PLUGINS_LOADED[@]}";   do echo -e "  \e[1;32m[on]\e[0m  $p"; done
+	for p in "${PLUGINS_DISABLED[@]}"; do echo -e "  \e[1;90m[off]\e[0m $p (disabled)"; done
+	for p in "${PLUGINS_FAILED[@]}";   do echo -e "  \e[1;31m[err]\e[0m $p"; done
+
+	# Pause only when something needs attention; clean launches proceed at once.
+	if (( ${#PLUGINS_DISABLED[@]} > 0 || ${#PLUGINS_FAILED[@]} > 0 )); then
+		read -r -p "Press Enter to continue..."
+	fi
+	return 0
+}
+
+load_plugins
 
 # --- Functions ---
 clear_screen() {
