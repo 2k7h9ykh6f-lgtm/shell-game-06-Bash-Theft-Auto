@@ -3700,6 +3700,7 @@ save_game() {
 
 	command -v bounty_save_extra &>/dev/null && bounty_save_extra
 	command -v economy_save_extra &>/dev/null && economy_save_extra
+	command -v delivery_save_extra &>/dev/null && delivery_save_extra
 
 	echo "Game saved successfully."; read -r -p "Press Enter..."
 }
@@ -3765,6 +3766,7 @@ load_game() {
 
 	command -v bounty_load_extra &>/dev/null && bounty_load_extra
 	command -v economy_load_extra &>/dev/null && economy_load_extra
+	command -v delivery_load_extra &>/dev/null && delivery_load_extra
 
 	apply_gang_upgrades
 	echo "Game loaded successfully."; read -r -p "Press Enter..."
@@ -3940,6 +3942,8 @@ while true; do
 	echo "21. City Reputation |"
 	echo "---  GANG & EMPIRE  ---"
 	echo "G.  Gang Menu       |"
+	echo "---  JOBS & CONTRACTS  ---"
+	echo "D.  Courier Jobs    |"
 	echo "------------------------------------------------------------"
 	echo "S.  Save Game       | L.  Load Game    | N.  News Feed"
 	echo "M.  Music Player    | A.  About        | P.  Perks"
@@ -4009,6 +4013,7 @@ while true; do
 		20) manage_phone_contacts;;
 		21) show_city_reputation;;
 		'g') show_gang_menu;;
+		'd') command -v show_courier_menu &>/dev/null && show_courier_menu || { echo "Courier system not available."; sleep 1; };;
 		's') save_game;;
 		'l')
 			read -r -p "Load game? Unsaved progress will be lost. (y/n): " confirm
