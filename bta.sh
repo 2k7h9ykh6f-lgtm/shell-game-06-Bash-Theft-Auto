@@ -3937,7 +3937,7 @@ while true; do
 	echo "15. Loan Shark      | 16. Auction House"
 	echo "17. Fence Goods     | 18. Protection Racket"
 	echo "19. Safe House      | 20. Phone Contacts"
-	echo "21. City Reputation |"
+	echo "21. City Reputation | 22. Courier Jobs"
 	echo "---  GANG & EMPIRE  ---"
 	echo "G.  Gang Menu       |"
 	echo "------------------------------------------------------------"
@@ -4008,6 +4008,7 @@ while true; do
 		19) rent_safe_house;;
 		20) manage_phone_contacts;;
 		21) show_city_reputation;;
+		22) delivery_missions_board;;
 		'g') show_gang_menu;;
 		's') save_game;;
 		'l')
