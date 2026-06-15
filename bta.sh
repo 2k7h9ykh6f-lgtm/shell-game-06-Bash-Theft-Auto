@@ -15,17 +15,26 @@ set +H
 
 BASEDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# --- i18n: Load localization system ---
+# Language is set from BTA_LANG env var, ~/.bta/lang config, or defaults to "en".
+# Override at runtime: BTA_LANG=ru ./bta.sh
+if [[ -f "$BASEDIR/lang/i18n.sh" ]]; then
+    source "$BASEDIR/lang/i18n.sh"
+fi
+
 # --- Cleanup Function and Trap ---
 cleanup_and_exit() {
-	echo -e "\nCleaning up and exiting..."
+	echo -e "\n$(_ "cleanup_msg")"
+	# Print i18n missing keys report (only in debug mode)
+	if type _i18n_report &>/dev/null; then _i18n_report; fi
 	if [[ -n "$music_pid" ]] && kill -0 "$music_pid" 2>/dev/null; then
-		echo "Stopping music (PID: $music_pid)..."
+		printf "Stopping music (PID: %d)...\n" "$music_pid"
 		kill "$music_pid" &>/dev/null
 		wait "$music_pid" 2>/dev/null
 		music_pid=""
 	fi
 	stty echo
-	echo "Cleanup complete. Goodbye."
+	echo "$(_ "cleanup_complete")"
 	exit 0
 }
 trap cleanup_and_exit SIGINT SIGTERM SIGHUP
@@ -183,6 +192,9 @@ if [[ "${BTA_DEBUG:-0}" == "1" ]]; then
     } >> "$BTA_DEBUG_LOG"
 fi
 
+# --- Initialize i18n (after debug system so logging works) ---
+if type _i18n_init &>/dev/null; then _i18n_init; fi
+
 # --- Global Variables ---
 player_name=""
 location="Los Santos"
@@ -268,7 +280,7 @@ manage_perks() {
     clear_screen
     while true; do
         clear_screen
-        echo "--- Perk System ---"
+        echo "--- $(_ "menu_perks") ---"
         printf " Available Perk Points: \e[1;95m%d\e[0m\n" "$perk_points"
         echo " (Earn points by gaining Respect milestones every 1000 Respect)"
         echo "================================================================"
@@ -300,7 +312,7 @@ manage_perks() {
         done
         echo "================================================================"
         echo "Enter perk name to buy it, or B to go back."
-        read -r -p "Choice: " choice
+        read -r -p "$(_ "choice")" choice
         if [[ "$choice" == "b" || "$choice" == "B" ]]; then return; fi
         if [[ -v "perk_costs[$choice]" ]]; then
             if [[ -v "perks[$choice]" ]]; then
@@ -316,7 +328,7 @@ manage_perks() {
         else
             echo "Invalid perk name. Type the exact name shown."
         fi
-        read -r -p "Press Enter..."
+        read -r -p "$(_ "press_enter")"
     done
 }
 
@@ -328,21 +340,21 @@ check_police_encounter() {
 
     clear_screen
     play_sfx_mpg "police_siren"
-    echo -e "\e[1;31m*** POLICE ENCOUNTER! ***\e[0m"
-    echo "Wanted Level: $(printf '*%.0s' $(seq 1 $wanted_level))"
+    echo -e "\e[1;31m*** $(_ "police_title") ***\e[0m"
+    echo "$(_ "label_wanted") Level: $(printf '*%.0s' $(seq 1 $wanted_level))"
     echo "------------------------------------------------"
 
     local escape_chance=$(( 40 + ${skills[stealth]:-1} * 5 + ${skills[driving]:-1} * 3 ))
     (( escape_chance > 85 )) && escape_chance=85
 
-    echo "1. Run for it!    (Escape chance: ${escape_chance}%)"
-    echo "2. Bribe them.    (Cost: \$$(( wanted_level * 150 )))"
-    echo "3. Surrender.     (Fine + jail time)"
-    read -r -p "Choice: " police_choice
+    echo "1. $(_ "police_run")    (Escape chance: ${escape_chance}%)"
+    echo "2. $(_ "police_bribe")    (Cost: \$$(( wanted_level * 150 )))"
+    echo "3. $(_ "police_surrender")     (Fine + jail time)"
+    read -r -p "$(_ "choice")" police_choice
 
     case "$police_choice" in
         1)
-            echo "You bolt down the alley..."; sleep 1
+            echo "$(_ "police_run_success")"; sleep 1
             if (( RANDOM % 100 < escape_chance )); then
                 echo -e "\e[1;32mYou lost them! Nice moves.\e[0m"
                 if (( RANDOM % 3 == 0 )); then
@@ -382,7 +394,7 @@ check_police_encounter() {
             fi
             ;;
         3|*)
-            echo "You put your hands up..."; sleep 1
+            echo "$(_ "police_surrender_msg")"; sleep 1
             local fine=$(( RANDOM % 150 + wanted_level * 80 ))
             local time_lost=$(( wanted_level * 2 ))
             cash=$(( cash - fine )); (( cash < 0 )) && cash=0
@@ -393,7 +405,7 @@ check_police_encounter() {
             ;;
     esac
     check_health
-    read -r -p "Press Enter..."
+    read -r -p "$(_ "press_enter")"
 }
 
 declare -A default_skills=( ["driving"]=1 ["strength"]=1 ["charisma"]=1 ["stealth"]=1 ["drug_dealer"]=1 )
@@ -755,14 +767,14 @@ fi
 clear_screen() {
 	clear
 	printf "\e[93m============================================================\e[0m\n"
-	printf "\e[1;43m|                       Bash Theft Auto                      |\e[0m\n"
+	printf "\e[1;43m|              $(_ "game_title")              |\e[0m\n"
 	printf "\e[93m============================================================\e[0m\n"
-	printf " Day: %-10d Time: %02d:00\n" "$game_day" "$game_hour"
-	printf " Player: %-15s Location: %s\n" "$player_name" "$location"
-	printf " Cash: \$%-19d Health: %d%%\n" "$cash" "$health"
-	if $body_armor_equipped; then printf " Armor: \e[1;32mEquipped\e[0m"; else printf " Armor: \e[1;31mNone\e[0m    "; fi
+	printf " $(_ "label_day"): %-10d $(_ "label_time"): %02d:00\n" "$game_day" "$game_hour"
+	printf " $(_ "label_player"): %-15s $(_ "label_location"): %s\n" "$player_name" "$location"
+	printf " $(_ "label_cash"): \$%-19d $(_ "label_health"): %d%%\n" "$cash" "$health"
+	if $body_armor_equipped; then printf " $(_ "label_armor"): \e[1;32m$(_ "armor_equipped")\e[0m"; else printf " $(_ "label_armor"): \e[1;31m$(_ "armor_none")\e[0m    "; fi
 	local stars=""; for ((i=0; i<wanted_level; i++)); do stars+="*"; done
-	printf " | Wanted: \e[1;31m%-5s\e[0m\n" "$stars"
+	printf " | $(_ "label_wanted"): \e[1;31m%-5s\e[0m\n" "$stars"
 	local display_gang="$player_gang"
 	local display_rank="$player_gang_rank"
 	if [[ "$player_gang" == "None" ]]; then display_gang="N/A"; display_rank="N/A"; fi
@@ -783,34 +795,34 @@ clear_screen() {
 about_music_sfx() {
 	clear_screen
 	echo "-----------------------------------------"
-	echo "          |       About       |          "
+	echo "          |       $(_ "about_title")       |          "
 	echo "-----------------------------------------"
 	echo ""
-	echo "Music and some SFX © 2024 by stuffbymax - Martin Petik"
-	echo "Licensed under CC BY 4.0:"
+	echo "$(_ "about_music")"
+	echo "$(_ "about_license"):"
 	echo "https://creativecommons.org/licenses/by/4.0/"
 	echo ""
-	echo "Full game code is licensed under the MIT License."
+	echo "$(_ "about_code")"
 	echo "https://raw.githubusercontent.com/stuffbymax/Bash-Theft-Auto/refs/heads/main/LICENSE"
 	echo ""
-	echo "Thank you for playing!"
+	echo "$(_ "about_thanks")"
 	echo "-----------------------------------------"
-	read -r -p "Press Enter to return..."
+	read -r -p "$(_ "press_enter_return")"
 }
 
 check_health() {
 	if (( health <= 0 )); then
 		health=0
 		clear_screen
-		echo -e "\n      \e[1;31m W A S T E D \e[0m\n"
+		echo -e "\n      \e[1;31m $(_ "wasted") \e[0m\n"
 		play_sfx_mpg "wasted"
-		echo "You collapsed from your injuries..."
+		echo "$(_ "death_message")"
 		sleep 1
 		local respect_loss=$(( RANDOM % 50 + 25 ))
-		echo "You lost ${respect_loss} Respect for being taken down."
+		printf "$(_ "death_respect_loss")\n" "$respect_loss"
 		player_respect=$((player_respect - respect_loss))
 		(( player_respect < 0 )) && player_respect=0
-		read -r -p "Press Enter to go to the hospital..."
+		read -r -p "$(_ "press_enter_hospital")"
 		hospitalize_player
 		return 1
 	fi
@@ -861,23 +873,23 @@ award_respect() {
 # =====================================================
 show_city_reputation() {
 	clear_screen
-	echo "--- City Reputation ---"
-	echo "Your reputation determines job pay bonuses, shop discounts, and NPC reactions."
+	echo "$(_ "city_rep_title")"
+	echo "$(_ "city_rep_desc")"
 	echo "==========================================="
 	for city in "Los Santos" "San Fierro" "Las Venturas" "Vice City" "Liberty City" "Blaine County"; do
 		local rep=${city_reputation[$city]:-0}
 		local rep_label=""
 		local color=""
-		if (( rep >= 80 )); then rep_label="Legend"; color="\e[1;33m"
-		elif (( rep >= 60 )); then rep_label="Known"; color="\e[1;32m"
-		elif (( rep >= 40 )); then rep_label="Respected"; color="\e[1;36m"
-		elif (( rep >= 20 )); then rep_label="Noticed"; color="\e[1;37m"
-		else rep_label="Unknown"; color="\e[0;37m"; fi
+		if (( rep >= 80 )); then rep_label="$(_ "city_rep_legend")"; color="\e[1;33m"
+		elif (( rep >= 60 )); then rep_label="$(_ "city_rep_known")"; color="\e[1;32m"
+		elif (( rep >= 40 )); then rep_label="$(_ "city_rep_respected")"; color="\e[1;36m"
+		elif (( rep >= 20 )); then rep_label="$(_ "city_rep_noticed")"; color="\e[1;37m"
+		else rep_label="$(_ "city_rep_unknown")"; color="\e[0;37m"; fi
 		printf " %-18s Rep: %b%3d\e[0m (%s)\n" "$city" "$color" "$rep" "$rep_label"
 	done
 	echo "==========================================="
 	echo "Benefits: 20+ = +5% job pay | 40+ = shop discount | 60+ = contact unlock hints | 80+ = feared (crime success boost)"
-	read -r -p "Press Enter..."
+	read -r -p "$(_ "press_enter")"
 }
 
 get_city_rep_bonus() {
@@ -896,8 +908,8 @@ visit_loan_shark() {
 	run_clock 1
 	while true; do
 		clear_screen
-		echo "--- Vinnie's Loan Shop ---"
-		echo "\"Money when you need it. Pain when you don't pay.\""
+		echo "$(_ "loan_title")"
+		echo "\"$(_ "loan_motto")\""
 		echo "============================================"
 		if (( loan_amount > 0 )); then
 			printf " Current Loan:    \e[1;31m\$%d\e[0m\n" "$loan_amount"
@@ -931,7 +943,7 @@ visit_loan_shark() {
 					else
 						echo -e "\e[1;31mNot enough cash. Need \$$total.\e[0m"
 					fi
-					read -r -p "Press Enter..."; ;;
+					read -r -p "$(_ "press_enter")"; ;;
 				2)
 					read -r -p "How much to pay? \$" pay_amount
 					if [[ "$pay_amount" =~ ^[1-9][0-9]*$ ]] && (( cash >= pay_amount )); then
@@ -951,11 +963,11 @@ visit_loan_shark() {
 							loan_due_day=0; loan_enforcer_warned=false
 						fi
 					else
-						echo "Invalid amount or not enough cash."
+						echo "$(_ "loan_invalid_amount")"
 					fi
-					read -r -p "Press Enter...";;
+					read -r -p "$(_ "press_enter")";;
 				3) return;;
-				*) echo "Invalid."; sleep 1;;
+				*) echo "$(_ "invalid_choice")"; sleep 1;;
 			esac
 		else
 			case "$choice" in
@@ -963,7 +975,7 @@ visit_loan_shark() {
 				2) take_loan 2000 20;;
 				3) take_loan 5000 25;;
 				4) return;;
-				*) echo "Invalid."; sleep 1;;
+				*) echo "$(_ "invalid_choice")"; sleep 1;;
 			esac
 		fi
 	done
@@ -973,7 +985,7 @@ take_loan() {
 	local amount=$1
 	local rate=$2
 	if (( loan_amount > 0 )); then
-		echo "You already have an outstanding loan. Repay it first."; read -r -p "Press Enter..."; return
+		echo "You already have an outstanding loan. Repay it first."; read -r -p "$(_ "press_enter")"; return
 	fi
 	echo "You're borrowing \$$amount at ${rate}% daily interest."
 	echo "Miss payments and Vinnie will send someone to collect."
@@ -992,7 +1004,7 @@ take_loan() {
 	else
 		echo "Smart choice."
 	fi
-	read -r -p "Press Enter..."
+	read -r -p "$(_ "press_enter")"
 }
 
 loan_rate=15  # global, updated when loan taken
@@ -1068,7 +1080,7 @@ enforcer_visit() {
 			echo "Extra \$200 added to your debt for the trouble.";;
 	esac
 	check_health
-	read -r -p "Press Enter..."
+	read -r -p "$(_ "press_enter")"
 }
 
 # =====================================================
@@ -1111,7 +1123,7 @@ visit_auction_house() {
 				local min_next=$(( current_auction[current_bid] + 50 ))
 				echo "Minimum bid: \$$min_next"
 				read -r -p "Your bid: \$" bid
-				if ! [[ "$bid" =~ ^[1-9][0-9]*$ ]]; then echo "Invalid."; sleep 1; continue; fi
+				if ! [[ "$bid" =~ ^[1-9][0-9]*$ ]]; then echo "$(_ "invalid_choice")"; sleep 1; continue; fi
 				if (( bid < min_next )); then echo "Bid too low."; sleep 1; continue; fi
 				if (( bid > cash )); then echo "Not enough cash."; sleep 1; continue; fi
 				# Simulate competing bidder
@@ -1129,7 +1141,7 @@ visit_auction_house() {
 					echo "You paid \$$bid for: ${current_auction[item]}"
 					apply_auction_reward "${current_auction[item]}"
 					play_sfx_mpg "win_big"
-					read -r -p "Press Enter..."
+					read -r -p "$(_ "press_enter")"
 					return
 				fi;;
 			2)
@@ -1137,7 +1149,7 @@ visit_auction_house() {
 				echo "New lot available."
 				sleep 1;;
 			3) return;;
-			*) echo "Invalid."; sleep 1;;
+			*) echo "$(_ "invalid_choice")"; sleep 1;;
 		esac
 	done
 }
@@ -1279,7 +1291,7 @@ visit_fence() {
 	fi
 
 	if ! $sold_something; then echo ""; echo "Nothing sold."; fi
-	read -r -p "Press Enter..."
+	read -r -p "$(_ "press_enter")"
 }
 
 # =====================================================
@@ -1374,7 +1386,7 @@ check_travel_ambush() {
 			fi;;
 	esac
 	check_health
-	read -r -p "Press Enter..."
+	read -r -p "$(_ "press_enter")"
 }
 
 # =====================================================
@@ -1390,7 +1402,7 @@ check_player_bounty() {
 		echo "Word has spread. A bounty of \$$player_bounty has been placed on you."
 		echo "Hitman \"$bounty_hitman_name\" has taken the contract."
 		play_sfx_mpg "police_siren"
-		read -r -p "Press Enter..."
+		read -r -p "$(_ "press_enter")"
 	fi
 
 	# If bounty active, chance of hitman encounter
@@ -1471,7 +1483,7 @@ hitman_encounter() {
 			fi;;
 	esac
 	check_health
-	read -r -p "Press Enter..."
+	read -r -p "$(_ "press_enter")"
 }
 
 clear_bounty_via_contact() {
@@ -1485,7 +1497,7 @@ clear_bounty_via_contact() {
 		else
 			echo "Need \$$cost and an active bounty."
 		fi
-		read -r -p "Press Enter..."
+		read -r -p "$(_ "press_enter")"
 	fi
 }
 
@@ -1562,7 +1574,7 @@ rent_safe_house() {
 			fi;;
 		3) return;;
 	esac
-	read -r -p "Press Enter..."
+	read -r -p "$(_ "press_enter")"
 }
 
 # =====================================================
@@ -1571,13 +1583,13 @@ rent_safe_house() {
 drive_by_mission() {
 	run_clock 2
 	if [[ "$player_gang" == "None" ]]; then
-		echo "You need to be in a gang to order a drive-by."; read -r -p "Press Enter..."; return
+		echo "You need to be in a gang to order a drive-by."; read -r -p "$(_ "press_enter")"; return
 	fi
 	if (( ${#owned_vehicles[@]} == 0 )); then
-		echo "You need a vehicle to do a drive-by."; read -r -p "Press Enter..."; return
+		echo "You need a vehicle to do a drive-by."; read -r -p "$(_ "press_enter")"; return
 	fi
 	if (( ${#guns[@]} == 0 )); then
-		echo "You need a weapon for this."; read -r -p "Press Enter..."; return
+		echo "You need a weapon for this."; read -r -p "$(_ "press_enter")"; return
 	fi
 
 	# Find a rival territory in this city
@@ -1589,7 +1601,7 @@ drive_by_mission() {
 		fi
 	done
 	if (( ${#rival_keys[@]} == 0 )); then
-		echo "No rival gang territories to hit in this city."; read -r -p "Press Enter..."; return
+		echo "No rival gang territories to hit in this city."; read -r -p "$(_ "press_enter")"; return
 	fi
 
 	local target_key="${rival_keys[RANDOM % ${#rival_keys[@]}]}"
@@ -1642,7 +1654,7 @@ drive_by_mission() {
 		play_sfx_mpg "lose"
 	fi
 	check_health
-	read -r -p "Press Enter..."
+	read -r -p "$(_ "press_enter")"
 }
 
 # =====================================================
@@ -1688,7 +1700,7 @@ manage_protection_racket() {
 						((i++))
 					fi
 				done
-				if (( i == 1 )); then echo "All local businesses already paying."; read -r -p "Press Enter..."; continue; fi
+				if (( i == 1 )); then echo "All local businesses already paying."; read -r -p "$(_ "press_enter")"; continue; fi
 				printf " %d. Back\n" "$i"
 				read -r -p "Which to extort? " echoice
 				if [[ "$echoice" =~ ^[0-9]+$ ]] && (( echoice >= 1 && echoice < i )); then
@@ -1715,7 +1727,7 @@ manage_protection_racket() {
 						((i++))
 					fi
 				done
-				if (( i == 1 )); then echo "No businesses currently paying."; read -r -p "Press Enter..."; continue; fi
+				if (( i == 1 )); then echo "No businesses currently paying."; read -r -p "$(_ "press_enter")"; continue; fi
 				printf " %d. Back\n" "$i"
 				read -r -p "Raise pressure on which? " rchoice
 				if [[ "$rchoice" =~ ^[0-9]+$ ]] && (( rchoice >= 1 && rchoice < i )); then
@@ -1723,7 +1735,7 @@ manage_protection_racket() {
 					raise_protection_pressure "$target_biz"
 				fi;;
 			3) return;;
-			*) echo "Invalid."; sleep 1;;
+			*) echo "$(_ "invalid_choice")"; sleep 1;;
 		esac
 	done
 }
@@ -1753,7 +1765,7 @@ start_extortion() {
 		(( wanted_level > MAX_WANTED_LEVEL )) && wanted_level=$MAX_WANTED_LEVEL
 		play_sfx_mpg "police_siren"
 	fi
-	read -r -p "Press Enter..."
+	read -r -p "$(_ "press_enter")"
 }
 
 raise_protection_pressure() {
@@ -1778,7 +1790,7 @@ raise_protection_pressure() {
 		echo -e "\e[1;32mThey caved. Now paying \$${new_income}/day.\e[0m"
 		play_sfx_mpg "cash_register"
 	fi
-	read -r -p "Press Enter..."
+	read -r -p "$(_ "press_enter")"
 }
 
 collect_protection_income() {
@@ -1804,7 +1816,7 @@ collect_protection_income() {
 send_gang_spy() {
 	run_clock 2
 	if [[ "$player_gang" == "None" ]]; then
-		echo "You need to be in a gang to use this."; read -r -p "Press Enter..."; return
+		echo "You need to be in a gang to use this."; read -r -p "$(_ "press_enter")"; return
 	fi
 
 	clear_screen
@@ -1824,7 +1836,7 @@ send_gang_spy() {
 	done
 
 	if (( ${#rivals_in_city[@]} == 0 )); then
-		echo "No rivals with territory in this city to spy on."; read -r -p "Press Enter..."; return
+		echo "No rivals with territory in this city to spy on."; read -r -p "$(_ "press_enter")"; return
 	fi
 
 	local i=1
@@ -1835,11 +1847,11 @@ send_gang_spy() {
 	read -r -p "Choice: " schoice
 
 	if [[ "$schoice" == "$i" ]] || ! [[ "$schoice" =~ ^[0-9]+$ ]]; then return; fi
-	if (( schoice < 1 || schoice > ${#rivals_in_city[@]} )); then echo "Invalid."; sleep 1; return; fi
+	if (( schoice < 1 || schoice > ${#rivals_in_city[@]} )); then echo "$(_ "invalid_choice")"; sleep 1; return; fi
 
 	local target_gang="${rivals_in_city[$((schoice-1))]}"
 	local spy_cost=500
-	if (( cash < spy_cost )); then echo "Not enough cash (\$$spy_cost needed)."; read -r -p "Press Enter..."; return; fi
+	if (( cash < spy_cost )); then echo "Not enough cash (\$$spy_cost needed)."; read -r -p "$(_ "press_enter")"; return; fi
 
 	cash=$(( cash - spy_cost ))
 	echo "You send an informant into ${target_gang} territory..."; sleep 2
@@ -1868,7 +1880,7 @@ send_gang_spy() {
 		(( wanted_level > MAX_WANTED_LEVEL )) && wanted_level=$MAX_WANTED_LEVEL
 		play_sfx_mpg "police_siren"
 	fi
-	read -r -p "Press Enter..."
+	read -r -p "$(_ "press_enter")"
 }
 
 # =====================================================
@@ -1899,7 +1911,7 @@ visit_gym() {
 		4) skill_name="charisma"; cost=200;;
 		5) skill_name="drug_dealer"; cost=400;;
 		6) return;;
-		*) echo "Invalid."; sleep 1; return;;
+		*) echo "$(_ "invalid_choice")"; sleep 1; return;;
 	esac
 	# City rep gives discount at gym
 	local rep_discount=$(( ${city_reputation[$location]:-0} / 10 ))
@@ -1913,7 +1925,7 @@ visit_gym() {
 	else
 		echo "Not enough cash."
 	fi
-	read -r -p "Press Enter..."
+	read -r -p "$(_ "press_enter")"
 }
 
 # =====================================================
@@ -2030,7 +2042,7 @@ call_contact() {
 				echo "\"No active loan? Come back when you need me.\""
 			fi;;
 	esac
-	read -r -p "Press Enter..."
+	read -r -p "$(_ "press_enter")"
 }
 
 # Check and unlock contacts based on conditions
@@ -2147,7 +2159,7 @@ calculate_and_apply_payouts() {
 	# Check contact unlocks
 	check_contact_unlocks
 
-	read -r -p "Press Enter to continue..."
+	read -r -p "$(_ "press_enter_continue")"
 }
 
 run_clock() {
@@ -2201,7 +2213,7 @@ travel_to() {
 	local travel_time=4
 
 	if [[ "$new_location" == "$current_location" ]]; then
-		echo "You are already in $new_location."; read -r -p "Press Enter..."; return
+		echo "You are already in $new_location."; read -r -p "$(_ "press_enter")"; return
 	fi
 
 	if (( ${#owned_vehicles[@]} > 0 )); then
@@ -2238,10 +2250,10 @@ travel_to() {
 		# Ambush check during travel
 		check_travel_ambush
 
-		read -r -p "Press Enter..."
+		read -r -p "$(_ "press_enter")"
 	else
 		echo "Not enough cash (\$$travel_cost needed) to travel to $new_location."
-		read -r -p "Press Enter..."
+		read -r -p "$(_ "press_enter")"
 	fi
 }
 
@@ -2283,7 +2295,7 @@ buy_guns() {
 	echo " 14. Leave"
 	echo "--------------------------------------------"
 	read -r -p "Enter your choice: " gun_choice
-	[[ ! "$gun_choice" =~ ^[0-9]+$ ]] && { echo "Invalid input."; read -r -p "Press Enter..."; return; }
+	[[ ! "$gun_choice" =~ ^[0-9]+$ ]] && { echo "Invalid input."; read -r -p "$(_ "press_enter")"; return; }
 	case "$gun_choice" in
 		1)  buy_gun "Hawk 9" 100;;
 		2)  buy_gun "Rex 38" 150;;
@@ -2299,7 +2311,7 @@ buy_guns() {
 		12) buy_gun "Diamondback MG" 1100;;
 		13) buy_gun "Ghost Sniper" 1000;;
 		14) return;;
-		*)  echo "Invalid choice."; read -r -p "Press Enter...";;
+		*)  echo "Invalid choice."; read -r -p "$(_ "press_enter")";;
 	esac
 }
 
@@ -2308,7 +2320,7 @@ buy_gun() {
 	if [[ -v "perks[Street Negotiator]" ]]; then gun_cost=$(( gun_cost * 90 / 100 )); fi
 	for owned_gun in "${guns[@]}"; do
 		if [[ "$owned_gun" == "$gun_name" ]]; then
-			echo "Looks like you already got a $gun_name there, partner."; read -r -p "Press Enter..."; return
+			echo "Looks like you already got a $gun_name there, partner."; read -r -p "$(_ "press_enter")"; return
 		fi
 	done
 	if (( cash >= gun_cost )); then
@@ -2316,10 +2328,10 @@ buy_gun() {
 		if command -v buy_animation &> /dev/null; then buy_animation "$gun_name"; fi
 		cash=$((cash - gun_cost)); guns+=("$gun_name")
 		echo "One $gun_name, coming right up! That'll be \$$gun_cost."
-		read -r -p "Press Enter..."
+		read -r -p "$(_ "press_enter")"
 	else
 		echo "Sorry pal, not enough cash for the $gun_name (\$$gun_cost needed)."
-		read -r -p "Press Enter..."
+		read -r -p "$(_ "press_enter")"
 	fi
 }
 
@@ -2346,9 +2358,9 @@ buy_vehicle() {
 			play_sfx_mpg "cash_register"; cash=$((cash - chosen_price))
 			owned_vehicles+=("$chosen_type")
 			echo "Congratulations on your new $chosen_type! That's \$${chosen_price}."
-			play_sfx_mpg "car_start"; read -r -p "Press Enter..."
+			play_sfx_mpg "car_start"; read -r -p "$(_ "press_enter")"
 		else
-			echo "Sorry, you need \$${chosen_price} for the $chosen_type."; read -r -p "Press Enter..."
+			echo "Sorry, you need \$${chosen_price} for the $chosen_type."; read -r -p "$(_ "press_enter")"
 		fi
 	done
 }
@@ -2411,7 +2423,7 @@ show_inventory() {
 				if (( ${#items[@]} == 0 )); then echo "No items to use."; sleep 1; continue; fi
 				read -r -p "Enter item number to use: " item_num
 				if ! [[ "$item_num" =~ ^[0-9]+$ ]] || (( item_num < 1 || item_num > ${#items[@]} )); then
-					echo "Invalid."; sleep 1; continue
+					echo "$(_ "invalid_choice")"; sleep 1; continue
 				fi
 				local chosen_item="${items[$((item_num - 1))]}"
 				use_item "$chosen_item" $((item_num - 1));;
@@ -2460,7 +2472,7 @@ use_item() {
 			echo "(Scanner remains in inventory — passive effect active while held)";;
 		*) echo "You can't use $item_name right now.";;
 	esac
-	read -r -p "Press Enter..."
+	read -r -p "$(_ "press_enter")"
 }
 
 work_job() {
@@ -2536,7 +2548,7 @@ work_job() {
 	if [[ -n "$relevant_skill_name" ]] && (( RANDOM % 5 == 0 )); then
 		skills[$relevant_skill_name]=$((relevant_skill_level + 1)); printf "Your \e[1;32m%s\e[0m skill increased!\n" "$relevant_skill_name"
 	fi
-	read -r -p "Press Enter to continue..."
+	read -r -p "$(_ "press_enter_continue")"
 }
 
 street_race() {
@@ -2568,7 +2580,7 @@ street_race() {
 		player_respect=$((player_respect - 5)); ((player_respect < 0)) && player_respect=0; echo "You lost 5 Respect."
 		play_sfx_mpg "lose"
 	fi
-	check_health; read -r -p "Press Enter to continue..."
+	check_health; read -r -p "$(_ "press_enter_continue")"
 }
 
 apply_gun_bonus() {
@@ -2630,9 +2642,9 @@ buy_hospital_item() {
 					body_armor_equipped=true; echo "Body Armor equipped."; play_sfx_mpg "item_equip"
 				fi;;
 		esac
-		read -r -p "Press Enter..."
+		read -r -p "$(_ "press_enter")"
 	else
-		echo "Not enough cash (\$$item_cost needed)."; read -r -p "Press Enter..."
+		echo "Not enough cash (\$$item_cost needed)."; read -r -p "$(_ "press_enter")"
 	fi
 }
 
@@ -2660,7 +2672,7 @@ rob_store() {
 		health=$((health - (RANDOM % 26 + 10 + wanted_level * 5))); clear_screen
 		printf "\e[1;31mFailed!\e[0m Cops arrived quickly.\n"; printf "You were fined \$%d and took damage.\n" "$fine"
 	fi
-	check_health; read -r -p "Press Enter..."
+	check_health; read -r -p "$(_ "press_enter")"
 }
 
 burglary() {
@@ -2670,7 +2682,7 @@ burglary() {
 	if command -v burglary_animation &> /dev/null; then burglary_animation; else echo "Looking for an entry point..."; sleep 1; fi
 	play_sfx_mpg "burglary_stealth"
 	(( base_chance < 5 )) && base_chance=5; (( base_chance > 90 )) && base_chance=90
-	echo "Final success chance: ${base_chance}%"; read -r -p "Press Enter..."
+	echo "Final success chance: ${base_chance}%"; read -r -p "$(_ "press_enter")"
 	if (( RANDOM % 100 < base_chance )); then
 		local loot=$((RANDOM % 251 + 75 + stealth_skill * 15)); cash=$((cash + loot))
 		health=$((health - (RANDOM % 11))); clear_screen
@@ -2687,7 +2699,7 @@ burglary() {
 		printf "\e[1;31mFailed!\e[0m You triggered an alarm or were spotted!\n"; printf "You were fined \$%d and took damage escaping.\n" "$fine"
 		play_sfx_mpg "burglary_fail"
 	fi
-	check_health; read -r -p "Press Enter..."
+	check_health; read -r -p "$(_ "press_enter")"
 }
 
 heist() {
@@ -2696,7 +2708,7 @@ heist() {
 	clear_screen; echo "--- Plan Heist ---"
 	if command -v heist_animation &> /dev/null; then heist_animation; else echo "Executing the plan..."; sleep 1; fi
 	local final_success_chance=$(apply_gun_bonus "$base_chance" "heist")
-	echo "Final success chance: ${final_success_chance}%"; read -r -p "Press Enter..."
+	echo "Final success chance: ${final_success_chance}%"; read -r -p "$(_ "press_enter")"
 	if (( RANDOM % 100 < final_success_chance )); then
 		local loot=$((RANDOM % 501 + 250 + stealth_skill * 25)); cash=$((cash + loot))
 		health=$((health - (RANDOM % 31 + 15))); clear_screen
@@ -2713,7 +2725,7 @@ heist() {
 		printf "\e[1;31m--- HEIST FAILED! ---\e[0m\n Security was too tight.\n"; printf "You lost \$%d and took damage.\n" "$fine"
 		play_sfx_mpg "lose_big"
 	fi
-	check_health; read -r -p "Press Enter..."
+	check_health; read -r -p "$(_ "press_enter")"
 }
 
 carjack() {
@@ -2723,7 +2735,7 @@ carjack() {
 	clear_screen; echo "--- Carjack ---"
 	if command -v carjacking_animation &> /dev/null; then carjacking_animation; else echo "Spotting a target..."; sleep 1; fi
 	local final_success_chance=$(apply_gun_bonus "$base_chance" "carjacking")
-	echo "Final success chance: ${final_success_chance}%"; read -r -p "Press Enter..."
+	echo "Final success chance: ${final_success_chance}%"; read -r -p "$(_ "press_enter")"
 	if (( RANDOM % 100 < final_success_chance )); then
 		local possible_cars=("Sedan" "Truck" "Motorcycle")
 		local stolen_car_type=${possible_cars[ RANDOM % ${#possible_cars[@]} ]}
@@ -2742,7 +2754,7 @@ carjack() {
 		health=$((health - (RANDOM % 26 + 10 + wanted_level * 6))); clear_screen
 		printf "\e[1;31mFailed!\e[0m The owner fought back.\n"; printf "You were fined \$%d and took damage.\n" "$fine"
 	fi
-	check_health; read -r -p "Press Enter..."
+	check_health; read -r -p "$(_ "press_enter")"
 }
 
 pickpocket() {
@@ -2764,7 +2776,7 @@ pickpocket() {
 		local fine=$(( RANDOM % 51 + 25 + wanted_level * 15 )); cash=$(( cash - fine )); (( cash < 0 )) && cash=0
 		health=$(( health - (RANDOM % 11 + 5) )); echo "Fined \$$fine and roughed up."
 	fi
-	check_health; read -r -p "Press Enter..."
+	check_health; read -r -p "$(_ "press_enter")"
 }
 
 mug_someone() {
@@ -2789,7 +2801,7 @@ mug_someone() {
 		local fine=$(( RANDOM % 76 + 40 + wanted_level * 20 )); cash=$(( cash - fine )); (( cash < 0 )) && cash=0
 		health=$(( health - (RANDOM % 21 + 10) )); echo "Fined \$$fine and took a beating."
 	fi
-	check_health; read -r -p "Press Enter..."
+	check_health; read -r -p "$(_ "press_enter")"
 }
 
 arson() {
@@ -2809,7 +2821,7 @@ arson() {
 		health=$(( health - (RANDOM % 31 + 20) ))
 		echo -e "\e[1;31mCaught in the act!\e[0m Fined \$$fine, took burn damage."; play_sfx_mpg "police_siren"
 	fi
-	check_health; read -r -p "Press Enter..."
+	check_health; read -r -p "$(_ "press_enter")"
 }
 
 kidnap_for_ransom() {
@@ -2832,7 +2844,7 @@ kidnap_for_ransom() {
 		health=$(( health - (RANDOM % 41 + 20) ))
 		echo -e "\e[1;31mOperation blown!\e[0m Fined \$$fine, wanted level spiked."; play_sfx_mpg "lose_big"
 	fi
-	check_health; read -r -p "Press Enter..."
+	check_health; read -r -p "$(_ "press_enter")"
 }
 
 hospitalize_player() {
@@ -2844,7 +2856,7 @@ hospitalize_player() {
 	cash=$((cash - hospital_bill)); health=50; body_armor_equipped=false
 	if (( wanted_level > 0 )); then echo "The police lose interest. Wanted level cleared."; wanted_level=0; fi
 	play_sfx_mpg "cash_register"; printf "You leave with \$%d cash and %d%% health.\n" "$cash" "$health"
-	read -r -p "Press Enter..."
+	read -r -p "$(_ "press_enter")"
 }
 
 hire_hooker() {
@@ -2870,7 +2882,7 @@ hire_hooker() {
 			if (( RANDOM % 5 == 0 )); then skills[charisma]=$((charisma_skill+1)); printf "Your \e[1;32mcharisma\e[0m skill increased!\n"; fi
 		else echo "You decided against it and walked away."; fi
 	else echo "You don't have enough cash (\$$hooker_cost needed)."; fi
-	read -r -p "Press Enter to continue..."
+	read -r -p "$(_ "press_enter_continue")"
 }
 
 update_market_conditions() {
@@ -2936,7 +2948,7 @@ convenience_store() {
 			5) return;;
 			*) echo "Invalid.";;
 		esac
-		read -r -p "Press Enter..."
+		read -r -p "$(_ "press_enter")"
 	done
 }
 
@@ -2945,7 +2957,7 @@ black_market() {
 	if (( RANDOM % 10 == 0 )); then
 		echo -e "\e[1;31mIt's a sting operation!\e[0m Cops everywhere!"
 		wanted_level=$(( wanted_level + 2 )); (( wanted_level > MAX_WANTED_LEVEL )) && wanted_level=$MAX_WANTED_LEVEL
-		play_sfx_mpg "police_siren"; read -r -p "Press Enter..."; return
+		play_sfx_mpg "police_siren"; read -r -p "$(_ "press_enter")"; return
 	fi
 	while true; do
 		clear_screen; echo "--- Black Market ---"; printf " Cash: \$%d\n" "$cash"
@@ -2973,7 +2985,7 @@ black_market() {
 			5) return;;
 			*) echo "Invalid.";;
 		esac
-		read -r -p "Press Enter..."
+		read -r -p "$(_ "press_enter")"
 	done
 }
 
@@ -3019,7 +3031,7 @@ clothing_store() {
 			5) return;;
 			*) echo "Invalid.";;
 		esac
-		read -r -p "Press Enter..."
+		read -r -p "$(_ "press_enter")"
 	done
 }
 
@@ -3111,7 +3123,7 @@ buy_drugs() {
 	fi
 	local chosen_drug_name="${drug_names[$((drug_choice - 1))]}"; local chosen_drug_price="${drug_prices[$chosen_drug_name]}"
 	read -r -p "Enter amount of $chosen_drug_name to buy: " drug_amount
-	drug_transaction "buy" "$chosen_drug_name" "$chosen_drug_price" "$drug_amount"; read -r -p "Press Enter..."
+	drug_transaction "buy" "$chosen_drug_name" "$chosen_drug_price" "$drug_amount"; read -r -p "$(_ "press_enter")"
 }
 
 sell_drugs() {
@@ -3160,7 +3172,7 @@ sell_drugs() {
 	local chosen_drug_name="${available_to_sell[$((drug_choice - 1))]}"; local chosen_drug_price="${drug_sell_prices[$chosen_drug_name]}"
 	local current_inventory=${drugs[$chosen_drug_name]}
 	read -r -p "Sell how many units of $chosen_drug_name? (Max: $current_inventory): " drug_amount
-	drug_transaction "sell" "$chosen_drug_name" "$chosen_drug_price" "$drug_amount"; read -r -p "Press Enter..."
+	drug_transaction "sell" "$chosen_drug_name" "$chosen_drug_price" "$drug_amount"; read -r -p "$(_ "press_enter")"
 }
 
 # --- Music Player ---
@@ -3172,12 +3184,12 @@ stop_music() {
 }
 
 play_music() {
-	if ! $mpg123_available; then echo "Music playback disabled: 'mpg123' command not found."; read -r -p "Press Enter..."; return 1; fi
+	if ! $mpg123_available; then echo "Music playback disabled: 'mpg123' command not found."; read -r -p "$(_ "press_enter")"; return 1; fi
 	local music_dir="$BASEDIR/music"; local music_files=(); local original_ifs="$IFS"
-	if [[ ! -d "$music_dir" ]]; then echo "Error: Music directory '$music_dir' not found!"; read -r -p "Press Enter..."; return 1; fi
+	if [[ ! -d "$music_dir" ]]; then echo "Error: Music directory '$music_dir' not found!"; read -r -p "$(_ "press_enter")"; return 1; fi
 	while IFS= read -r -d $'\0' file; do music_files+=("$file"); done < <(find "$music_dir" -maxdepth 1 -type f \( -name "*.mp3" -o -name "*.MP3" \) -print0 2>/dev/null)
 	IFS="$original_ifs"
-	if (( ${#music_files[@]} == 0 )); then echo "No .mp3 files found in '$music_dir'."; read -r -p "Press Enter..."; return 1; fi
+	if (( ${#music_files[@]} == 0 )); then echo "No .mp3 files found in '$music_dir'."; read -r -p "$(_ "press_enter")"; return 1; fi
 	local choice_stop="s" choice_back="b" music_choice=""
 	local mpg123_log="/tmp/bta_mpg123_errors.$$.log"
 	while true; do
@@ -3205,8 +3217,8 @@ play_music() {
 					local new_pid=$!
 					sleep 0.5
 					if kill -0 "$new_pid" 2>/dev/null; then music_pid=$new_pid; echo "Playback started."
-					else echo "Error starting mpg123."; music_pid=""; read -r -p "Press Enter..."; fi
-				else echo "Invalid."; sleep 1; fi;;
+					else echo "Error starting mpg123."; music_pid=""; read -r -p "$(_ "press_enter")"; fi
+				else echo "$(_ "invalid_choice")"; sleep 1; fi;;
 		esac
 	done
 }
@@ -3236,7 +3248,7 @@ join_or_create_gang_menu() {
 		case "$choice" in
 			1) join_gang_interface; if [[ "$player_gang" != "None" ]]; then break; fi;;
 			2) if (( player_respect >= GANG_CREATION_RESPECT_REQ )); then create_own_gang; if [[ "$player_gang" != "None" ]]; then break; fi
-				else echo "Not enough respect."; read -r -p "Press Enter..."; fi;;
+				else echo "Not enough respect."; read -r -p "$(_ "press_enter")"; fi;;
 			3) return;; *) echo "Invalid choice." && sleep 1;;
 		esac
 	done
@@ -3316,12 +3328,12 @@ buy_property() {
 			echo "Purchased $prop_to_buy for \$${prop_cost}!"; play_sfx_mpg "cash_register"
 		else echo "Not enough cash."; fi
 	elif [[ "$choice" != "b" && "$choice" != "B" ]]; then echo "Invalid selection."; fi
-	read -r -p "Press Enter..."
+	read -r -p "$(_ "press_enter")"
 }
 
 manage_owned_property() {
 	clear_screen; echo "--- Your Properties (Global) ---"
-	if (( ${#owned_businesses[@]} == 0 )); then echo "You don't own any properties."; read -r -p "Press Enter..."; return; fi
+	if (( ${#owned_businesses[@]} == 0 )); then echo "You don't own any properties."; read -r -p "$(_ "press_enter")"; return; fi
 	local i=1; local -a owned_prop_keys=()
 	for prop in "${!owned_businesses[@]}"; do
 		printf "%d. %-25s (%s)\n" "$i" "$prop" "${owned_businesses[$prop]}"; owned_prop_keys+=("$prop"); ((i++))
@@ -3330,23 +3342,23 @@ manage_owned_property() {
 	if [[ "$choice" =~ ^[0-9]+$ ]] && (( choice > 0 && choice <= ${#owned_prop_keys[@]} )); then
 		echo "Managing ${owned_prop_keys[$((choice-1))]}... Upgrade/production system coming soon."
 	fi
-	read -r -p "Press Enter..."
+	read -r -p "$(_ "press_enter")"
 }
 
 create_own_gang() {
 	run_clock 1; clear_screen; echo "--- Found Your Own Gang ---"
 	read -r -p "Enter the name for your new gang: " new_gang_name
 	if [[ -z "$new_gang_name" || "$new_gang_name" == "None" || "$new_gang_name" == "Unaffiliated" || -v "GANG_HOME_CITY[$new_gang_name]" ]]; then
-		echo "Invalid or reserved name."; read -r -p "Press Enter..."; return
+		echo "Invalid or reserved name."; read -r -p "$(_ "press_enter")"; return
 	fi
 	player_gang="$new_gang_name"; player_gang_rank="Boss"; set_initial_gang_relations
 	play_sfx_mpg "win_big"; echo -e "\nThe \e[1;36m${player_gang}\e[0m are now on the map!"
-	echo "You are their leader, rank of ${player_gang_rank}."; read -r -p "Press Enter..."
+	echo "You are their leader, rank of ${player_gang_rank}."; read -r -p "$(_ "press_enter")"
 }
 
 join_gang_interface() {
 	run_clock 1
-	if [[ "$player_gang" != "None" ]]; then echo "Already in $player_gang."; read -r -p "Press Enter..."; return; fi
+	if [[ "$player_gang" != "None" ]]; then echo "Already in $player_gang."; read -r -p "$(_ "press_enter")"; return; fi
 	local i=1; local -a menu_options=(); clear_screen
 	echo "--- Join a Faction in ${location} ---"; echo "------------------------------------------------"
 	for gang in "${!GANG_HOME_CITY[@]}"; do
@@ -3354,7 +3366,7 @@ join_gang_interface() {
 			printf " %d. Join the %s\n" "$i" "$gang"; menu_options+=("$gang"); ((i++))
 		fi
 	done
-	if (( ${#menu_options[@]} == 0 )); then echo " No major gangs looking for recruits here."; read -r -p "Press Enter..."; return; fi
+	if (( ${#menu_options[@]} == 0 )); then echo " No major gangs looking for recruits here."; read -r -p "$(_ "press_enter")"; return; fi
 	echo "------------------------------------------------"; local back_option_number=$i
 	printf " %d. Back\n" "$back_option_number"; read -r -p "Your choice: " choice
 	if [[ "$choice" == "$back_option_number" ]]; then return
@@ -3369,15 +3381,15 @@ join_gang_interface() {
 			else echo "You walked away."; fi
 		else echo "You don't have the cash to get their attention."; fi
 	else echo "Invalid choice."; fi
-	read -r -p "Press Enter to continue..."
+	read -r -p "$(_ "press_enter_continue")"
 }
 
 initiate_gang_war() {
 	run_clock 3
 	if [[ "$player_gang" == "None" || "$player_gang_rank" == "Outsider" ]]; then
-		echo "You need to be part of a gang to start a war."; read -r -p "Press Enter..."; return
+		echo "You need to be part of a gang to start a war."; read -r -p "$(_ "press_enter")"; return
 	fi
-	if (( ${#guns[@]} == 0 )); then echo "You need a weapon to start a gang war!"; read -r -p "Press Enter..."; return; fi
+	if (( ${#guns[@]} == 0 )); then echo "You need a weapon to start a gang war!"; read -r -p "$(_ "press_enter")"; return; fi
 
 	local -a attackable_keys=(); local i=0; clear_screen
 	echo "--- Select a Territory to Attack in ${location} ---"
@@ -3391,23 +3403,23 @@ initiate_gang_war() {
 			attackable_keys+=("$key")
 		fi
 	done
-	if (( ${#attackable_keys[@]} == 0 )); then echo "You hold all available territories in this city!"; read -r -p "Press Enter..."; return; fi
+	if (( ${#attackable_keys[@]} == 0 )); then echo "You hold all available territories in this city!"; read -r -p "$(_ "press_enter")"; return; fi
 	echo "---------------------------------------------------"
 	local back_option_num=$((i + 1)); echo " ${back_option_num}. Back"; read -r -p "Choose your target: " choice
 	if ! [[ "$choice" =~ ^[0-9]+$ ]] || (( choice < 1 || choice > back_option_num )); then
-		echo "Invalid choice."; read -r -p "Press Enter..."; return
+		echo "Invalid choice."; read -r -p "$(_ "press_enter")"; return
 	fi
 	if (( choice == back_option_num )); then return; fi
 
 	local index=$((choice - 1))
-	if [[ -z "${attackable_keys[$index]}" ]]; then echo "Internal Error."; read -r -p "Press Enter..."; return; fi
+	if [[ -z "${attackable_keys[$index]}" ]]; then echo "Internal Error."; read -r -p "$(_ "press_enter")"; return; fi
 
 	local target_key="${attackable_keys[$index]}"; local rival_gang="${territory_owner[$target_key]}"
 	local target_district="${target_key#*|}"
 
 	clear_screen; echo -e "About to start a war for \e[1;33m${target_district}\e[0m in ${location}."
 	read -r -p "Are you ready to fight? (y/n) " confirm
-	if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then echo "You back off."; read -r -p "Press Enter..."; return; fi
+	if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then echo "You back off."; read -r -p "$(_ "press_enter")"; return; fi
 
 	local recruit_bonus=0
 	for recruit in "${player_recruits[@]}"; do
@@ -3451,7 +3463,7 @@ initiate_gang_war() {
 		player_respect=$((player_respect - 50)); ((player_respect < 0)) && player_respect=0; echo "Lost 50 Respect."
 		play_sfx_mpg "lose_big"
 	fi
-	check_health; read -r -p "Press Enter..."
+	check_health; read -r -p "$(_ "press_enter")"
 }
 
 manage_recruits_menu() {
@@ -3480,7 +3492,7 @@ manage_recruits_menu() {
 						echo "Hired ${name} for \$${hire_cost}."; play_sfx_mpg "cash_register"
 					else echo "Not enough cash (cost ~\$${hire_cost})."; fi
 				else echo "Can't hire more. Upgrade your Safe House."; fi
-				read -r -p "Press Enter...";;
+				read -r -p "$(_ "press_enter")";;
 			2) return;; *) echo "Invalid." && sleep 1;;
 		esac
 	done
@@ -3513,7 +3525,7 @@ gang_upgrades_menu() {
 					echo "Upgrade purchased!"; play_sfx_mpg "cash_register"
 				else echo "Not enough cash (\$$cost needed)."; fi
 			else echo "Already max level."; fi
-			read -r -p "Press Enter..."
+			read -r -p "$(_ "press_enter")"
 		else echo "Invalid." && sleep 1; fi
 	done
 }
@@ -3547,7 +3559,7 @@ diplomacy_menu() {
 					echo -e "\e[1;32mRelations now Neutral.\e[0m"; gang_relations["$target_gang"]="Neutral"
 				else echo -e "\e[1;31mFailed!\e[0m They took your money and laughed."; fi
 			elif [[ "$confirm" == "y" ]]; then echo "Not enough cash."; else echo "Cancelled."; fi
-			read -r -p "Press Enter..."
+			read -r -p "$(_ "press_enter")"
 		else echo "Invalid." && sleep 1; fi
 	done
 }
@@ -3555,7 +3567,7 @@ diplomacy_menu() {
 # --- Gambling Den ---
 gambling_den() {
 	if [[ "$location" != "Las Venturas" ]]; then
-		echo "Gambling dens are only available in Las Venturas."; read -r -p "Press Enter..."; return
+		echo "Gambling dens are only available in Las Venturas."; read -r -p "$(_ "press_enter")"; return
 	fi
 	run_clock 1
 	while true; do
@@ -3573,7 +3585,7 @@ gambling_den() {
 
 gamble_slots() {
 	local bet=25
-	if (( cash < bet )); then echo "Need \$$bet to play slots."; read -r -p "Press Enter..."; return; fi
+	if (( cash < bet )); then echo "Need \$$bet to play slots."; read -r -p "$(_ "press_enter")"; return; fi
 	cash=$(( cash - bet ))
 	local symbols=("CHERRY" "LEMON" "BELL" "BAR" "SEVEN" "SKULL")
 	local r1=${symbols[RANDOM % ${#symbols[@]}]}; local r2=${symbols[RANDOM % ${#symbols[@]}]}; local r3=${symbols[RANDOM % ${#symbols[@]}]}
@@ -3595,13 +3607,13 @@ gamble_slots() {
 	else
 		echo -e "\e[1;31mNo match. You lost \$$bet.\e[0m"; play_sfx_mpg "lose"
 	fi
-	read -r -p "Press Enter..."
+	read -r -p "$(_ "press_enter")"
 }
 
 gamble_dice() {
 	read -r -p "Enter your bet amount: \$" bet
 	if ! [[ "$bet" =~ ^[1-9][0-9]*$ ]] || (( cash < bet )); then
-		echo "Invalid bet or not enough cash."; read -r -p "Press Enter..."; return
+		echo "Invalid bet or not enough cash."; read -r -p "$(_ "press_enter")"; return
 	fi
 	cash=$(( cash - bet ))
 	local player_roll=$(( RANDOM % 6 + 1 + RANDOM % 6 + 1 )); local house_roll=$(( RANDOM % 6 + 1 + RANDOM % 6 + 1 ))
@@ -3614,13 +3626,13 @@ gamble_dice() {
 	else
 		echo -e "\e[1;31mHouse wins. You lost \$$bet.\e[0m"; play_sfx_mpg "lose"
 	fi
-	read -r -p "Press Enter..."
+	read -r -p "$(_ "press_enter")"
 }
 
 gamble_cards() {
 	read -r -p "Enter your bet amount: \$" bet
 	if ! [[ "$bet" =~ ^[1-9][0-9]*$ ]] || (( cash < bet )); then
-		echo "Invalid bet or not enough cash."; read -r -p "Press Enter..."; return
+		echo "Invalid bet or not enough cash."; read -r -p "$(_ "press_enter")"; return
 	fi
 	local player_card=$(( RANDOM % 13 + 1 )); local house_card=$(( RANDOM % 13 + 1 ))
 	cash=$(( cash - bet ))
@@ -3637,7 +3649,7 @@ gamble_cards() {
 	else
 		echo -e "\e[1;31mWrong call. You lost \$$bet.\e[0m"; play_sfx_mpg "lose"
 	fi
-	read -r -p "Press Enter..."
+	read -r -p "$(_ "press_enter")"
 }
 
 # =====================================================
@@ -3701,7 +3713,7 @@ save_game() {
 	command -v bounty_save_extra &>/dev/null && bounty_save_extra
 	command -v economy_save_extra &>/dev/null && economy_save_extra
 
-	echo "Game saved successfully."; read -r -p "Press Enter..."
+	echo "Game saved successfully."; read -r -p "$(_ "press_enter")"
 }
 
 load_game() {
@@ -3767,14 +3779,14 @@ load_game() {
 	command -v economy_load_extra &>/dev/null && economy_load_extra
 
 	apply_gang_upgrades
-	echo "Game loaded successfully."; read -r -p "Press Enter..."
+	echo "Game loaded successfully."; read -r -p "$(_ "press_enter")"
 	return 0
 }
 
 remove_save_files() { rm -f "$BASEDIR/$SAVE_DIR"/*.sav &> /dev/null; }
 
 Game_variables() {
-	clear_screen; read -r -p "Enter your player name: " player_name
+	clear_screen; read -r -p "$(_ "enter_name")" player_name
 	[[ -z "$player_name" ]] && player_name="toolazytowritename"
 	play_sfx_mpg "new_game"; location="Los Santos"; cash=500; health=100
 	guns=(); items=(); owned_vehicles=(); wanted_level=0; body_armor_equipped=false
@@ -3786,17 +3798,17 @@ Game_variables() {
 	contacts_unlocked=(); player_bounty=0; bounty_hitman_name=""
 	auction_active=false; current_auction=()
 	initialize_world_data
-	echo "Welcome to Bash Theft Auto, $player_name!"
+	echo "$(_ "welcome") $player_name!"
 	if [[ "$player_name" == "test" ]]; then cash=999999; player_respect=5000; fi
 	echo "Starting in $location with \$${cash} and ${health}%% health."
-	read -r -p "Press Enter to begin..."
+	read -r -p "$(_ "press_enter_continue")"
 }
 
 run_initial_menu() {
 	while true; do
-		clear_screen; echo "=== Bash Theft Auto ==="; echo "      Main Menu"; echo "---------------------"
-		echo "1. New Game"; echo "2. Load Game"; echo "3. Exit Game"; echo "---------------------"
-		stty echo; read -r -p "Enter your choice: " initial_choice
+		clear_screen; echo "=== $(_ "game_title") ==="; echo "      Main Menu"; echo "---------------------"
+		echo "1. New Game"; echo "2. $(_ "menu_load")"; echo "3. $(_ "menu_exit")"; echo "---------------------"
+		stty echo; read -r -p "$(_ "enter_choice")" initial_choice
 		case "$initial_choice" in
 			1) read -r -p "Start new game? This deletes any existing save. (y/n): " confirm
 				if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then remove_save_files; Game_variables; return 0
@@ -3871,7 +3883,7 @@ handle_player_territory_defense() {
 		player_respect=$((player_respect - 75)); ((player_respect < 0)) && player_respect=0
 		echo "You lost 75 Respect."; play_sfx_mpg "lose_big"; check_health
 	fi
-	read -r -p "Press Enter to continue..."
+	read -r -p "$(_ "press_enter_continue")"
 }
 
 process_world_events() {
@@ -3925,27 +3937,27 @@ while true; do
 	check_police_encounter
 	check_health && clear_screen || clear_screen
 
-	echo "--- Actions ---"
-	echo "1.  Travel          | 2.  Buy Guns"
-	echo "3.  Buy Vehicle     | 4.  Inventory"
+	echo "$(_ "menu_title")"
+	echo "1.  $(_ "menu_travel")          | 2.  $(_ "menu_buy_guns")"
+	echo "3.  $(_ "menu_buy_vehicle")     | 4.  $(_ "menu_inventory")"
 	echo "5.  Work (Legal)    | 6.  Work (Crime)"
-	echo "7.  Sell Drugs      | 8.  Buy Drugs"
+	echo "7.  $(_ "menu_sell_drugs")      | 8.  $(_ "menu_buy_drugs")"
 	echo "9.  Hire Hooker     | 10. Visit Hospital"
 	echo "11. Street Race     | 12. Gambling Den"
 	echo "13. Visit Shops     | 14. Training Gym"
 	echo "---  NEW MECHANICS  ---"
-	echo "15. Loan Shark      | 16. Auction House"
+	echo "15. $(_ "loan_title")      | 16. $(_ "auction_title")"
 	echo "17. Fence Goods     | 18. Protection Racket"
 	echo "19. Safe House      | 20. Phone Contacts"
-	echo "21. City Reputation |"
+	echo "21. $(_ "city_rep_title") |"
 	echo "---  GANG & EMPIRE  ---"
-	echo "G.  Gang Menu       |"
+	echo "G.  $(_ "menu_gang")       |"
 	echo "------------------------------------------------------------"
-	echo "S.  Save Game       | L.  Load Game    | N.  News Feed"
-	echo "M.  Music Player    | A.  About        | P.  Perks"
-	echo "X.  Exit Game       |"
+	echo "S.  $(_ "menu_save")       | L.  $(_ "menu_load")    | N.  News Feed"
+	echo "M.  Music Player    | A.  $(_ "menu_about")        | P.  $(_ "menu_perks")"
+	echo "X.  $(_ "menu_exit")       |"
 	echo "------------------------------------------------------------"
-	stty echo; read -r -p "Enter your choice: " choice
+	stty echo; read -r -p "$(_ "enter_choice")" choice
 	choice_lower=$(echo "$choice" | tr '[:upper:]' '[:lower:]')
 
 	case "$choice_lower" in
