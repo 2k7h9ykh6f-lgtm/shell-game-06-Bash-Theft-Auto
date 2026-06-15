@@ -760,9 +760,14 @@ clear_screen() {
 	printf " Day: %-10d Time: %02d:00\n" "$game_day" "$game_hour"
 	printf " Player: %-15s Location: %s\n" "$player_name" "$location"
 	printf " Cash: \$%-19d Health: %d%%\n" "$cash" "$health"
-	if $body_armor_equipped; then printf " Armor: \e[1;32mEquipped\e[0m"; else printf " Armor: \e[1;31mNone\e[0m    "; fi
-	local stars=""; for ((i=0; i<wanted_level; i++)); do stars+="*"; done
-	printf " | Wanted: \e[1;31m%-5s\e[0m\n" "$stars"
+	if $body_armor_equipped; then printf " Armor: \e[1;32mEquipped\e[0m\n"; else printf " Armor: \e[1;31mNone\e[0m\n"; fi
+	# --- Wanted level meter (own line, color-coded by threshold) ---
+	local wl_filled="" wl_empty="" wl_i
+	for ((wl_i=0; wl_i<wanted_level; wl_i++)); do wl_filled+="* "; done
+	for ((wl_i=wanted_level; wl_i<MAX_WANTED_LEVEL; wl_i++)); do wl_empty+="- "; done
+	local wl_color="\e[1;32m"
+	if (( wanted_level >= 3 )); then wl_color="\e[1;31m"; elif (( wanted_level >= 1 )); then wl_color="\e[1;33m"; fi
+	printf " WANTED: [ ${wl_color}%s\e[0m\e[90m%s\e[0m]  (${wl_color}%d\e[0m/%d)\n" "$wl_filled" "$wl_empty" "$wanted_level" "$MAX_WANTED_LEVEL"
 	local display_gang="$player_gang"
 	local display_rank="$player_gang_rank"
 	if [[ "$player_gang" == "None" ]]; then display_gang="N/A"; display_rank="N/A"; fi
