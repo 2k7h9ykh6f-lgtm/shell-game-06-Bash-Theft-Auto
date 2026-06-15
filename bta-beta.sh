@@ -743,13 +743,74 @@ play_sfx_mpg() {
 	return 1
 }
 
-# --- Plugin Loading ---
+# --- Plugin Loading System ---
 plugin_dir="plugins"
-if [[ -d "$BASEDIR/$plugin_dir" ]]; then
-	while IFS= read -r -d $'\0' plugin_script; do
-		[[ -f "$plugin_script" ]] && source "$plugin_script"
-	done < <(find "$BASEDIR/$plugin_dir" -maxdepth 1 -name "*.sh" -print0 2>/dev/null)
-fi
+declare -a BTA_PLUGINS_LOADED=()
+declare -a BTA_PLUGINS_FAILED=()
+declare -a BTA_PLUGINS_DISABLED=()
+
+load_plugins() {
+    local plugin_base="$BASEDIR/$plugin_dir"
+    [[ -d "$plugin_base" ]] || return
+
+    # --- Read disabled list from plugins.conf ---
+    local -A disabled_map=()
+    local conf_file="$plugin_base/plugins.conf"
+    if [[ -f "$conf_file" ]]; then
+        while IFS= read -r line; do
+            # Trim leading whitespace
+            line="${line#"${line%%[![:space:]]*}"}"
+            # Trim trailing whitespace
+            line="${line%"${line##*[![:space:]]}"}"
+            # Skip empty lines and comments
+            [[ -z "$line" || "$line" == \#* ]] && continue
+            # Support "disable: foo.sh" or plain "foo.sh"
+            line="${line#disable:}"
+            line="${line#"${line%%[![:space:]]*}"}"
+            disabled_map["$line"]=1
+        done < "$conf_file"
+    fi
+
+    # --- Discover and load plugins ---
+    while IFS= read -r -d $'\0' plugin_script; do
+        [[ -f "$plugin_script" ]] || continue
+        local plugin_name
+        plugin_name="$(basename "$plugin_script")"
+
+        # Check if plugin is disabled
+        if [[ -n "${disabled_map[$plugin_name]+_}" ]]; then
+            BTA_PLUGINS_DISABLED+=("$plugin_name")
+            continue
+        fi
+
+        # Syntax-check before sourcing (bash -n checks without executing)
+        local err_output
+        if err_output=$(bash -n "$plugin_script" 2>&1); then
+            source "$plugin_script" 2>/dev/null
+            BTA_PLUGINS_LOADED+=("$plugin_name")
+        else
+            BTA_PLUGINS_FAILED+=("$plugin_name")
+            printf '\e[1;31m[PLUGIN ERROR]\e[0m Failed to load \e[1m%s\e[0m\n' "$plugin_name"
+            if [[ -n "$err_output" ]]; then
+                printf '  %s\n' "$err_output"
+            fi
+        fi
+    done < <(find "$plugin_base" -maxdepth 1 -name "*.sh" -print0 2>/dev/null)
+
+    # --- Print load summary ---
+    if (( ${#BTA_PLUGINS_LOADED[@]} > 0 )); then
+        printf '\e[1;32m[Plugins]\e[0m Loaded (%d): %s\n' "${#BTA_PLUGINS_LOADED[@]}" "${BTA_PLUGINS_LOADED[*]}"
+    fi
+    if (( ${#BTA_PLUGINS_DISABLED[@]} > 0 )); then
+        printf '\e[1;33m[Plugins]\e[0m Disabled (%d): %s\n' "${#BTA_PLUGINS_DISABLED[@]}" "${BTA_PLUGINS_DISABLED[*]}"
+    fi
+    if (( ${#BTA_PLUGINS_FAILED[@]} > 0 )); then
+        printf '\e[1;31m[Plugins]\e[0m Failed (%d): %s\n' "${#BTA_PLUGINS_FAILED[@]}" "${BTA_PLUGINS_FAILED[*]}"
+        echo "  Game will continue with remaining plugins."
+    fi
+}
+
+load_plugins
 
 # =====================================================
 # --- Core Game Functions ---

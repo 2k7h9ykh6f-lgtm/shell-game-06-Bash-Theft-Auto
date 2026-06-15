@@ -1,0 +1,17 @@
+# BTA Plugin Configuration
+# ========================
+# List plugins to disable (one per line).
+# Lines starting with '#' are comments (ignored).
+# Empty lines are also ignored.
+#
+# Usage:
+#   Simply add the plugin filename below to disable it at startup.
+#   You can use either format:
+#     test_plugin.sh
+#     disable: test_plugin.sh
+#
+# Example:
+#   test_plugin.sh
+#
+# To re-enable a plugin, remove or comment out its line.
+# If this file does not exist, all plugins are enabled.

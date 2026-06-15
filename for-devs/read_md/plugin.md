@@ -201,3 +201,48 @@ skills[strength]=$old_val
 local -a loot_table=("Health Pack" "Fake ID" "Stolen Goods" "Adrenaline Shot")
 items+=("${loot_table[RANDOM % ${#loot_table[@]}]}")
 ```
+
+---
+
+## Disabling Plugins
+
+The plugin loader supports disabling individual plugins via a configuration file.
+
+### Configuration File: `plugins/plugins.conf`
+
+Create or edit `plugins/plugins.conf` in the plugins directory. Add one filename per line to disable that plugin:
+
+```ini
+# Disable the test plugin
+test_plugin.sh
+
+# You can also use the explicit prefix
+disable: animation.sh
+```
+
+**Format rules:**
+- One plugin filename per line (e.g. `test_plugin.sh`)
+- Lines starting with `#` are comments and are ignored
+- Empty lines are ignored
+- The `disable:` prefix is optional (both `test_plugin.sh` and `disable: test_plugin.sh` work)
+- If `plugins.conf` does not exist, all plugins are enabled (backward compatible)
+
+### Startup Output
+
+When the game starts, the plugin loader prints a summary:
+
+```
+[Plugins] Loaded (3): animation.sh bounty_contracts.sh stock_market.sh
+[Plugins] Disabled (1): test_plugin.sh
+```
+
+If a plugin fails to load (syntax error), you'll see:
+
+```
+[PLUGIN ERROR] Failed to load broken_plugin.sh
+  plugins/broken_plugin.sh: line 12: syntax error near unexpected token `}'
+[Plugins] Failed (1): broken_plugin.sh
+  Game will continue with remaining plugins.
+```
+
+The game continues running even if a plugin fails to load — only the broken plugin is skipped.
